@@ -1,8 +1,13 @@
 # SafeWeb AI 
 
-This documentation presents both CI/CD aspects as well as API definitions for APIs currently usable.
+## General information
 
-## Overall CI/CD aspects
+This section of documentation presents CI/CD aspects as well as basic API definitions. Extended API information can be found in below API section.
+
+> **Note**
+> Within this documentation you will see different `ver`, `worker_ver` and `time` in various example responses. This is due to the fact that the documentation has been completed gradually.
+
+### Overall CI/CD aspects
 
 All microservices are hosted under the same distributed gateway enabling multi-worker processing. Each microservice is defined by at least one property - i.e.`"SIGNATURE"`.
 Most microservices such as quiz generators require identification via both `"SIGNATURE"` as well as `"LANGUAGE"`.
@@ -29,26 +34,62 @@ As a result the data will be persistent from one session to another in the `sw_v
 
 A simple Azure or AWS Ubuntu 18+ VM is recommanded. See below the installation instructions.
 
-## Development
+### Development
 
-### Docker build
+#### Docker build
 
 ```
 docker build -t safeweb/ai .
 ```
 
-
-### Docker run
+...or a dev local build
 
 ```
-docker run --pull=always -p 5002-5010:5002-5010 safeweb/ai
+docker build -t localsw .
+```
+
+> **Note**
+> Place make sure env is prepared. Currently the env contains a couple neural word embeddings bundled within the env layer.
+
+#### Docker run
+
+```
+docker run --pull=always -p 5002-5010:5002-5010 -v sw_vol:/safeweb_ai/output safeweb/ai
+```
+
+or run locally
+
+```
+docker run -p 5002-5010:5002-5010 localsw
+```
+
+> **Note**
+> Always include volume `-v` and port forwarding `-p`.
+
+### Usage
+
+The engine itself works as a microservice gateway with multiple servers running their parallel workers. The list of active servers can be queried by running a `POST` on `<address>:5002/list_servers` resulting in a response similar with this 
+```
+{
+    "AVAIL_SERVERS": [
+        "dummy_model_a",
+        "basic_quiz_model"
+    ]
+}
+```
+
+#### Restart/update all servers within automated container
+
+Run `POST` on `<address>:5002/shutdown` with the following JSON:
+
+```
+{
+    "SIGNATURE" : "SAFEWEB_AI_KILL_SERVER"
+}
 ```
 
 
-## Usage
-
-
-### Querying a microservice
+#### Querying a microservice
 
 Run a `POST` on `<address>:5002/run` with the following JSON:
 
@@ -85,9 +126,9 @@ In this case as well as in other quiz-like responses we will obtain something li
 }
 ```
 
+For more information please see API section below.
 
-
-### Azure VM install
+#### Azure VM install
 
 To install Docker on an Azure VM with Ubuntu, follow these steps:
 
@@ -134,17 +175,294 @@ sudo systemctl start docker
 9. Create inbound rule with `*` as source and `5002-5010` as destination
 
 
-## API definition for 'basic_quiz_model' endpoint
+## SafeWeb AI API information
+
+In this section specific information about various microservices is provided.
+
+
+### API definition for utility features
+
+#### Specific query check
+
+Based on a data/question `IDX` we can ask for the specific quiz sample:
+
+
+```
+POST <address>:5002/run
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "QUIZ_CATEGORY" : "math-highschool",
+    "LANGUAGE" : "ro",
+    "IDX" : 3281
+}
+```
+
+In above example the `IDX` 3281 will probably fail for `basic_quiz_model` and a random romanian math-highschool quiz sample will be returned:
+```
+{
+    "call_id": 4,
+    "quizzes": [
+        {
+            "answer": "punct de intersecție",
+            "max_given_time": 7,
+            "options": [
+                "punct de aderență",
+                "punct de intersecție",
+                "punct de vârf"
+            ],
+            "question": "Ce se numește punctul unde două raze distincte intersectează perimetrul unui cerc?"
+        }
+    ],
+    "signature": "BasicQuizModelWorker:2",
+    "ver": "1.5.1",
+    "warning": null,
+    "worker_ver": "3.1.6"
+}
+```
+> **Note**
+> More about this later when we will add a new observation to the engine warmup dataset
+
+#### Modify a specific quiz
+
+If we need to correct a answer or a pre-generated word we can use the `FEEDBACK` option:
+
+```
+POST <address>:5002/run
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "QUIZ_CATEGORY" : "math-highschool",    
+    "LANGUAGE" : "ro",
+    "FEEDBACK" : true,
+    "IDX" :  1260,
+    "MODIFIED_QUESTION" : "O figura plana cu toate laturile egale și toate unghiurile de 60 de grade se numește _____",
+    "MODIFIED_ANSWER": "hexagon"
+}
+```
+
+Prior to this we have to know the `IDX` of the specific observation in question. The response will be:
+```
+{
+    "FEEDBACK": {
+        "idx": 1260,
+        "info": "Data cache saved.",
+        "mod_a": "hexagon",
+        "mod_q": "O figura plana cu toate laturile egale și toate unghiurile de 60 de grade se numește _____",
+        "orig_a": null,
+        "orig_q": null
+    },
+    "call_id": 2,
+    "signature": "BasicQuizModelWorker:3",
+    "ver": "1.4.2",
+    "warning": null,
+    "worker_ver": "3.1.2"
+}
+```
  
-Overall we have the `math-begin`,`math-mid`,`math-highschool`,`physics-begin`,`physics-highschool`,`geography`,`chemistry-begin`,`biology-begin`,`biology-highschool`,`chemistry-highschool`,`geography-highschool`,`physics-mid` categories and `ro`,`en` languages
-Requests are made using:
+We can also "search" for the observation based on the original question and answer as below:
+
+```
+POST <address>:5002/run
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "QUIZ_CATEGORY" : "math-highschool",    
+    "LANGUAGE" : "ro",
+    "FEEDBACK" : true,
+
+    "ORIGINAL_QUESTION" : "O figură plană care are toate laturile egale și toate unghiurile de 60 de grade se numește _____.",
+    "ORIGINAL_ANSWER" : "hexagon regulat",
+
+    "MODIFIED_QUESTION" : "O figura plana cu toate laturile egale și toate unghiurile de 60 de grade se numește _____",
+    "MODIFIED_ANSWER": "hexagon"
+}
+```
+
+In this scond case no `IDX` is used and the response will be:
+
+```
+{
+    "FEEDBACK": {
+        "idx": null,
+        "info": "Data cache saved.",
+        "mod_a": "hexagon",
+        "mod_q": "O figura plana cu toate laturile egale și toate unghiurile de 60 de grade se numește _____",
+        "orig_a": "hexagon regulat",
+        "orig_q": "O figură plană care are toate laturile egale și toate unghiurile de 60 de grade se numește _____."
+    },
+    "call_id": 2,
+    "signature": "BasicQuizModelWorker:2",
+    "ver": "1.5.1",
+    "warning": null,
+    "worker_ver": "3.1.6"
+}
+```
+
+#### New question addition
+
+If we need to add more data to our live quiz "warmup" dataset we can do this using the following microservice call:
+
+```
+POST <address>:5002/run
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "QUIZ_CATEGORY" : "math-highschool",    
+    "LANGUAGE" : "ro",
+    "ADD_QUESTION" : true,
+    "QUESTION" : "Ce au in comun o frunza, un nautil si un fulg de zapada?",
+    "ANSWER": "fractal"
+}
+```
+
+giving a response similar to this:
+
+```
+{
+    "ADD_QUESTION": {
+        "IDX": 3281,
+        "INFO": "Data added at IDX=3281. Data cache saved."
+    },
+    "call_id": 3,
+    "signature": "BasicQuizModelWorker:0",
+    "ver": "1.5.0",
+    "warning": null,
+    "worker_ver": "3.1.6"
+}
+```
+
+At this point the engine will analyze the answer and will "come-up" with various "wrong" answers such as `'multidimensional', 'expresionist', 'impresionist', 'spaţiu-timp', 'uimitor', 'infinit', 'globular', 'imaginativ', 'neastâmpărat', 'univers', 'umanoid', 'fascinant', 'caleidoscop', 'expansiv', 'sferic', 'continuum', 'omuleț', 'genial', 'neobişnuit', 'inepuizabil'` thus running the previous query will now yield the specific 3281 `IDX`.
+
+```
+POST <address>:5002/run
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "QUIZ_CATEGORY" : "math-highschool",
+    "LANGUAGE" : "ro",
+    "IDX" : 3281
+}
+```
+
+... will now yield a response similar to this one below:
+
+```
+{
+    "call_id": 7,
+    "quizzes": [
+        {
+            "answer": "fractal",
+            "max_given_time": 5,
+            "options": [
+                "fractal",
+                "univers",
+                "fascinant"
+            ],
+            "question": "Ce au in comun o frunza, un nautil si un fulg de zapada?"
+        }
+    ],
+    "signature": "BasicQuizModelWorker:2",
+    "ver": "1.5.1",
+    "warning": null,
+    "worker_ver": "3.1.6"
+}
+```
+
+#### Query-in a particular server features
+
+While the system can encapsulate multiple microservice servers most of the servers have the `GET_STATUS` option implemented. Using below query a status of the pre-generated available data can be requested:
+```
+POST <address>:5002/run
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "GET_STATUS" : true
+}
+```
+this will result in a breakdown report similar to below answer:
+```
+{
+    "GET_STATUS": {
+        "breakdown": {
+            "biology-begin": {
+                "en": 102,
+                "ro": 116
+            },
+            "biology-highschool": {
+                "en": 99,
+                "ro": 101
+            },
+            "chemistry-begin": {
+                "en": 130,
+                "ro": 125
+            },
+            "chemistry-highschool": {
+                "en": 101,
+                "ro": 104
+            },
+            "geography": {
+                "en": 12,
+                "ro": 10
+            },
+            "geography-highschool": {
+                "en": 106,
+                "ro": 115
+            },
+            "math-begin": {
+                "en": 456,
+                "ro": 275
+            },
+            "math-highschool": {
+                "en": 255,
+                "ro": 136
+            },
+            "math-mid": {
+                "en": 303,
+                "ro": 110
+            },
+            "physics-begin": {
+                "en": 230,
+                "ro": 129
+            },
+            "physics-highschool": {
+                "en": 8,
+                "ro": 5
+            },
+            "physics-mid": {
+                "en": 158,
+                "ro": 95
+            }
+        },
+        "categs": 12,
+        "langs": 2,
+        "total": 3281
+    },
+    "call_id": 1,
+    "signature": "BasicQuizModelWorker:1",
+    "time": "2023-04-28 06:41:26",
+    "ver": "1.5.3",
+    "warning": null,
+    "worker_ver": "3.1.6"
+}
+```
+
+### API definition for 'basic_quiz_model' endpoint
+ 
+For the microservice server designated by the `SIGNATURE` with the value `basic_quiz_model`  we have the `math-begin`,`math-mid`,`math-highschool`,`physics-begin`,`physics-highschool`,`geography`,`chemistry-begin`,`biology-begin`,`biology-highschool`,`chemistry-highschool`,`geography-highschool`,`physics-mid` categories and the `ro` and `en` languages.
+Requests are made using `POST` requests on the currenly - as of 2023-04-13 - active microservice gateway server as follows:
 ```
 POST http://20.220.208.245:5002/run
 ```
 
+Beside the above mentioned main server the same microservice gateway server provides other microservice servers - ie. as of 2023-04-13 exposing a neural word similarity endpoint with the temporary signature `dummy_model_a`.
+```
+{
+    "SIGNATURE" : "dummy_model_a",
+}
+```
 
-
-### Microservice #1/24 - Basic_Quiz_Model : Math-Begin : Ro
+#### Microservice #1/24 - Basic_Quiz_Model : Math-Begin : Ro
 
 For basic_quiz_model, language 'ro', domain 'math-begin', we have the following request BODY:
 ```
@@ -178,7 +496,7 @@ And this is a example response for above request of microservice #1:
 ```
 
 
-### Microservice #2/24 - Basic_Quiz_Model : Math-Mid : Ro
+#### Microservice #2/24 - Basic_Quiz_Model : Math-Mid : Ro
 
 For basic_quiz_model, language 'ro', domain 'math-mid', we have the following request BODY:
 ```
@@ -212,7 +530,7 @@ And this is a example response for above request of microservice #2:
 ```
 
 
-### Microservice #3/24 - Basic_Quiz_Model : Math-Highschool : Ro
+#### Microservice #3/24 - Basic_Quiz_Model : Math-Highschool : Ro
 
 For basic_quiz_model, language 'ro', domain 'math-highschool', we have the following request BODY:
 ```
@@ -246,7 +564,7 @@ And this is a example response for above request of microservice #3:
 ```
 
 
-### Microservice #4/24 - Basic_Quiz_Model : Physics-Begin : Ro
+#### Microservice #4/24 - Basic_Quiz_Model : Physics-Begin : Ro
 
 For basic_quiz_model, language 'ro', domain 'physics-begin', we have the following request BODY:
 ```
@@ -280,7 +598,7 @@ And this is a example response for above request of microservice #4:
 ```
 
 
-### Microservice #5/24 - Basic_Quiz_Model : Physics-Highschool : Ro
+#### Microservice #5/24 - Basic_Quiz_Model : Physics-Highschool : Ro
 
 For basic_quiz_model, language 'ro', domain 'physics-highschool', we have the following request BODY:
 ```
@@ -314,7 +632,7 @@ And this is a example response for above request of microservice #5:
 ```
 
 
-### Microservice #6/24 - Basic_Quiz_Model : Geography : Ro
+#### Microservice #6/24 - Basic_Quiz_Model : Geography : Ro
 
 For basic_quiz_model, language 'ro', domain 'geography', we have the following request BODY:
 ```
@@ -348,7 +666,7 @@ And this is a example response for above request of microservice #6:
 ```
 
 
-### Microservice #7/24 - Basic_Quiz_Model : Chemistry-Begin : Ro
+#### Microservice #7/24 - Basic_Quiz_Model : Chemistry-Begin : Ro
 
 For basic_quiz_model, language 'ro', domain 'chemistry-begin', we have the following request BODY:
 ```
@@ -382,7 +700,7 @@ And this is a example response for above request of microservice #7:
 ```
 
 
-### Microservice #8/24 - Basic_Quiz_Model : Biology-Begin : Ro
+#### Microservice #8/24 - Basic_Quiz_Model : Biology-Begin : Ro
 
 For basic_quiz_model, language 'ro', domain 'biology-begin', we have the following request BODY:
 ```
@@ -416,7 +734,7 @@ And this is a example response for above request of microservice #8:
 ```
 
 
-### Microservice #9/24 - Basic_Quiz_Model : Biology-Highschool : Ro
+#### Microservice #9/24 - Basic_Quiz_Model : Biology-Highschool : Ro
 
 For basic_quiz_model, language 'ro', domain 'biology-highschool', we have the following request BODY:
 ```
@@ -450,7 +768,7 @@ And this is a example response for above request of microservice #9:
 ```
 
 
-### Microservice #10/24 - Basic_Quiz_Model : Chemistry-Highschool : Ro
+#### Microservice #10/24 - Basic_Quiz_Model : Chemistry-Highschool : Ro
 
 For basic_quiz_model, language 'ro', domain 'chemistry-highschool', we have the following request BODY:
 ```
@@ -484,7 +802,7 @@ And this is a example response for above request of microservice #10:
 ```
 
 
-### Microservice #11/24 - Basic_Quiz_Model : Geography-Highschool : Ro
+#### Microservice #11/24 - Basic_Quiz_Model : Geography-Highschool : Ro
 
 For basic_quiz_model, language 'ro', domain 'geography-highschool', we have the following request BODY:
 ```
@@ -518,7 +836,7 @@ And this is a example response for above request of microservice #11:
 ```
 
 
-### Microservice #12/24 - Basic_Quiz_Model : Physics-Mid : Ro
+#### Microservice #12/24 - Basic_Quiz_Model : Physics-Mid : Ro
 
 For basic_quiz_model, language 'ro', domain 'physics-mid', we have the following request BODY:
 ```
@@ -552,7 +870,7 @@ And this is a example response for above request of microservice #12:
 ```
 
 
-### Microservice #13/24 - Basic_Quiz_Model : Math-Begin : En
+#### Microservice #13/24 - Basic_Quiz_Model : Math-Begin : En
 
 For basic_quiz_model, language 'en', domain 'math-begin', we have the following request BODY:
 ```
@@ -586,7 +904,7 @@ And this is a example response for above request of microservice #13:
 ```
 
 
-### Microservice #14/24 - Basic_Quiz_Model : Math-Mid : En
+#### Microservice #14/24 - Basic_Quiz_Model : Math-Mid : En
 
 For basic_quiz_model, language 'en', domain 'math-mid', we have the following request BODY:
 ```
@@ -620,7 +938,7 @@ And this is a example response for above request of microservice #14:
 ```
 
 
-### Microservice #15/24 - Basic_Quiz_Model : Math-Highschool : En
+#### Microservice #15/24 - Basic_Quiz_Model : Math-Highschool : En
 
 For basic_quiz_model, language 'en', domain 'math-highschool', we have the following request BODY:
 ```
@@ -654,7 +972,7 @@ And this is a example response for above request of microservice #15:
 ```
 
 
-### Microservice #16/24 - Basic_Quiz_Model : Physics-Begin : En
+#### Microservice #16/24 - Basic_Quiz_Model : Physics-Begin : En
 
 For basic_quiz_model, language 'en', domain 'physics-begin', we have the following request BODY:
 ```
@@ -688,7 +1006,7 @@ And this is a example response for above request of microservice #16:
 ```
 
 
-### Microservice #17/24 - Basic_Quiz_Model : Physics-Highschool : En
+#### Microservice #17/24 - Basic_Quiz_Model : Physics-Highschool : En
 
 For basic_quiz_model, language 'en', domain 'physics-highschool', we have the following request BODY:
 ```
@@ -722,7 +1040,7 @@ And this is a example response for above request of microservice #17:
 ```
 
 
-### Microservice #18/24 - Basic_Quiz_Model : Geography : En
+#### Microservice #18/24 - Basic_Quiz_Model : Geography : En
 
 For basic_quiz_model, language 'en', domain 'geography', we have the following request BODY:
 ```
@@ -756,7 +1074,7 @@ And this is a example response for above request of microservice #18:
 ```
 
 
-### Microservice #19/24 - Basic_Quiz_Model : Chemistry-Begin : En
+#### Microservice #19/24 - Basic_Quiz_Model : Chemistry-Begin : En
 
 For basic_quiz_model, language 'en', domain 'chemistry-begin', we have the following request BODY:
 ```
@@ -790,7 +1108,7 @@ And this is a example response for above request of microservice #19:
 ```
 
 
-### Microservice #20/24 - Basic_Quiz_Model : Biology-Begin : En
+#### Microservice #20/24 - Basic_Quiz_Model : Biology-Begin : En
 
 For basic_quiz_model, language 'en', domain 'biology-begin', we have the following request BODY:
 ```
@@ -824,7 +1142,7 @@ And this is a example response for above request of microservice #20:
 ```
 
 
-### Microservice #21/24 - Basic_Quiz_Model : Biology-Highschool : En
+#### Microservice #21/24 - Basic_Quiz_Model : Biology-Highschool : En
 
 For basic_quiz_model, language 'en', domain 'biology-highschool', we have the following request BODY:
 ```
@@ -858,7 +1176,7 @@ And this is a example response for above request of microservice #21:
 ```
 
 
-### Microservice #22/24 - Basic_Quiz_Model : Chemistry-Highschool : En
+#### Microservice #22/24 - Basic_Quiz_Model : Chemistry-Highschool : En
 
 For basic_quiz_model, language 'en', domain 'chemistry-highschool', we have the following request BODY:
 ```
@@ -892,7 +1210,7 @@ And this is a example response for above request of microservice #22:
 ```
 
 
-### Microservice #23/24 - Basic_Quiz_Model : Geography-Highschool : En
+#### Microservice #23/24 - Basic_Quiz_Model : Geography-Highschool : En
 
 For basic_quiz_model, language 'en', domain 'geography-highschool', we have the following request BODY:
 ```
@@ -926,7 +1244,7 @@ And this is a example response for above request of microservice #23:
 ```
 
 
-### Microservice #24/24 - Basic_Quiz_Model : Physics-Mid : En
+#### Microservice #24/24 - Basic_Quiz_Model : Physics-Mid : En
 
 For basic_quiz_model, language 'en', domain 'physics-mid', we have the following request BODY:
 ```
