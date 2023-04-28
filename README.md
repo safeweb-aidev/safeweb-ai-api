@@ -369,7 +369,90 @@ POST <address>:5002/run
 }
 ```
 
-#### Query-in a particular server features
+#### Get a full test in one shot
+
+The "normal" interaction and consumption of the API should involve getting a full test not only a single quiz item.
+```
+POST <address>:5002/run
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "QUIZ_CATEGORY" : "math-highschool",
+    "LANGUAGE" : "ro",
+    "N_SAMPLES" : 5
+}
+```
+
+resulting in a response similar to the below one:
+
+```
+{
+    "call_id": 2,
+    "quizzes": [
+        {
+            "answer": "liniară",
+            "max_given_time": 7,
+            "options": [
+                "trigonometrică",
+                "liniară",
+                "exponențială"
+            ],
+            "question": "O funcție care are o rată constantă de schimbare se numește funcție _______."
+        },
+        {
+            "answer": "distanța",
+            "max_given_time": 7,
+            "options": [
+                "raza",
+                "distanța",
+                "inclinarea"
+            ],
+            "question": "Ce se numește distanța dintre un punct și o linie?"
+        },
+        {
+            "answer": "paralelă",
+            "max_given_time": 7,
+            "options": [
+                "paralelă",
+                "inocentă",
+                "satisfăcătoare"
+            ],
+            "question": "O linie care se apropie astfel încât să nu se întâlnească niciodată este o linie ____. "
+        },
+        {
+            "answer": "27",
+            "max_given_time": 7,
+            "options": [
+                "45",
+                "9",
+                "27"
+            ],
+            "question": "Care este volumul unui cub cu latura de 3?"
+        },
+        {
+            "answer": "intersecție",
+            "max_given_time": 7,
+            "options": [
+                "intersecție",
+                "extensie",
+                "înșurubare"
+            ],
+            "question": "Cum se numește punctul  unde o secantă intersectează marginea unei figuri chiulangii?"
+        }
+    ],
+    "signature": "BasicQuizModelWorker:3",
+    "time": "2023-04-28 07:22:01",
+    "ver": "1.5.3",
+    "warning": null,
+    "worker_ver": "3.1.6"
+}
+```
+
+> **Note**
+> The backend LLM model is trained to be as entertaining as possible while remaining strict to the subject as much as it can - i.e. "figuri chiulangii?" 
+
+
+#### Query a particular server features
 
 While the system can encapsulate multiple microservice servers most of the servers have the `GET_STATUS` option implemented. Using below query a status of the pre-generated available data can be requested:
 ```
