@@ -182,6 +182,63 @@ In this section specific information about various microservices is provided.
 
 ### API definition for utility features
 
+Most of the endpoints have the following utility features
+
+#### Get system health status
+
+Getting system status requires a simple API call `POST <address>:5002/run`:
+
+```
+{
+    "SYSTEM_STATUS": {
+        "info": "Memory Size is in GB. Total and avail mem may be reported inconsistently in containers.",
+        "mem_avail": 22.88,
+        "mem_gateway": 0.13,
+        "mem_servers": {
+            "basic_quiz_model": 0.56,
+            "dummy_model_a": 0.14
+        },
+        "mem_sys": 1.14,
+        "mem_total": 24.85,
+        "mem_used": 0.83
+    },
+    "time": "2023-05-02 07:46:45",
+    "ver": "2.3.2"
+}
+```
+
+#### Reset warmup dataset (restoring from backups)
+
+In order to replace container warmup dataset for a specific microservice that uses warmup data we have the following call:
+
+```
+POST <address>:5002/run
+
+
+{
+    "SIGNATURE" : "basic_quiz_model",    
+    "RESET_WARMUP" : "https://www.dropbox.com/s/d19umzv3zcysqbn/basic_warmup_dataset.bin?dl=1"
+}
+```
+
+In this case the provided URL consists in the default dataset for the `basic_quiz_model` microservices. Results should look similar to the following response:
+
+```
+{
+    "RESET_WARMUP": {
+        "INFO": "Quiz warmup reinitialized from download and reloaded!",
+        "SUCCESS": true
+    },
+    "call_id": 26,
+    "signature": "BasicQuizModelWorker:2",
+    "time": "2023-05-01 08:13:50",
+    "ver": "2.2.0",
+    "warning": null,
+    "worker_ver": "3.1.7"
+}
+```
+
+
 #### Specific query check
 
 Based on a data/question `IDX` we can ask for the specific quiz sample:
